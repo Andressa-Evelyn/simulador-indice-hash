@@ -1,0 +1,10 @@
+[project]
+name = "simulador-indice-hash"
+version = "0.1.0"
+description = "Aplicação desenvolvida em Python que simula o funcionamento de um índice hash estático sobre uma tabela de dados armazenada em páginas na memória"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pyedifice>=5.0.1",
+    "pyside6-essentials>=6.11.2",
+]
