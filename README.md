@@ -9,10 +9,18 @@ Este sistema é uma aplicação desenvolvida em Python que simula o funcionament
 Estrutura de diretórios.
 
 ```sh
-app
-├───ui # Interface gráfica do sistema
-│   └───app.py
-└───main.py # ponte de comunicação entre processos
+simulador-indice-hash
+├───app
+│   ├───__init__.py # inicialização do pacote da aplicação
+│   ├───data.py # carga de dados e divisão dos registros em páginas
+│   └───ui
+│       ├───__init__.py # inicialização do pacote da interface
+│       └───app.py # interface gráfica do sistema
+├───instrucoes_indice_hash.md # requisitos e instruções do trabalho
+├───main.py # ponto de entrada da aplicação
+├───pyproject.toml # configuração do projeto e dependências
+├───requirements.txt # dependências Python
+└───README.md # documentação do projeto
 ```
 
 ## Executar
