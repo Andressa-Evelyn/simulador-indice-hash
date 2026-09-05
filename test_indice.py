@@ -21,6 +21,10 @@ def carregar_modulo_indice():
 
 indice = carregar_modulo_indice()
 Bucket = indice.Bucket
+buscar_chave_indice = indice.buscar_chave_indice
+buscar_por_table_scan = indice.buscar_por_table_scan
+calcular_custo_paginas_lidas = indice.calcular_custo_paginas_lidas
+comparar_buscas = indice.comparar_buscas
 calcular_taxa_colisoes = indice.calcular_taxa_colisoes
 calcular_taxa_overflow = indice.calcular_taxa_overflow
 construir_indice = indice.construir_indice
@@ -86,6 +90,36 @@ class TestIndiceHash(unittest.TestCase):
 
         total_no_indice = sum(len(bucket.todos_registros()) for bucket in indice)
         self.assertEqual(total_no_indice, sum(len(pagina) for pagina in paginas))
+
+    def test_busca_por_indice_hash_e_table_scan(self):
+        paginas = [["a", "b"], ["c", "d"], ["e", "f"]]
+        indice_buckets, _ = construir_indice(paginas, 2)
+
+        resultado_indice = buscar_chave_indice(indice_buckets, "d")
+        self.assertTrue(resultado_indice["encontrada"])
+        self.assertEqual(resultado_indice["pagina"], 1)
+        self.assertEqual(resultado_indice["paginas_lidas"], 1)
+        self.assertGreaterEqual(resultado_indice["tempo_execucao"], 0.0)
+        self.assertEqual(calcular_custo_paginas_lidas(resultado_indice["paginas_lidas"]), 1)
+
+        resultado_scan = buscar_por_table_scan(paginas, "d")
+        self.assertTrue(resultado_scan["encontrada"])
+        self.assertEqual(resultado_scan["pagina"], 1)
+        self.assertEqual(resultado_scan["paginas_lidas"], 2)
+        self.assertGreaterEqual(resultado_scan["tempo_execucao"], 0.0)
+
+    def test_comparacao_tempo_e_custo(self):
+        indice_resultado = {"tempo_execucao": 0.001, "custo_paginas_lidas": 1}
+        scan_resultado = {"tempo_execucao": 0.010, "custo_paginas_lidas": 3}
+
+        comparacao = comparar_buscas(indice_resultado, scan_resultado)
+
+        self.assertAlmostEqual(comparacao["tempo_indice"], 0.001)
+        self.assertAlmostEqual(comparacao["tempo_scan"], 0.010)
+        self.assertGreater(comparacao["diferenca_tempo"], 0)
+        self.assertEqual(comparacao["custo_indice"], 1)
+        self.assertEqual(comparacao["custo_scan"], 3)
+        self.assertEqual(comparacao["diferenca_custo"], 2)
 
 
 if __name__ == "__main__":
