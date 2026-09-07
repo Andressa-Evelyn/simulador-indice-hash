@@ -1,13 +1,19 @@
 import asyncio
+import math
 from typing import Callable
 from os.path import basename
-from edifice import component, HBoxView, VBoxView, Label, Button, TableGridView, TableGridRow, use_state, use_async
+from edifice import component, HBoxView, VBoxView, Label, Button, Dropdown, TableGridView, TableGridRow, TabView, use_state, use_async
 from PySide6.QtWidgets import QFileDialog
 
+from app.indice import (
+    calcular_taxa_colisoes,
+    calcular_taxa_overflow,
+    quantidade_colisoes,
+    quantidade_buckets_com_overflow,
+)
 from app.ui.styles import (
     get_theme_colors,
     get_primary_button_style,
-    get_secondary_button_style,
     get_section_header_style,
     PRIMARY_BUTTON,
     SECTION_HEADER,
@@ -75,59 +81,6 @@ def SelectFile(_, filepath: str,
         Button("Selecione o arquivo", on_click=select_file, style=btn_style | { 'max-width': '120px', 'opacity': 0.8 if is_loading else 1.0})
 
 
-@component
-def TotalInfo(_, total_words: int, total_pages: int):
-    with HBoxView(style={'padding-bottom': 12}):
-        InfoLabel("Total de palavras", str(total_words))
-        InfoLabel("Total de páginas", str(total_pages))
-
-
-@component
-def TablePagePreview(_, page_number: int, items = [], style={}):
-    colors = get_theme_colors()
-    last_index = len(items) - 1
-    with VBoxView(style=style | {'padding': 6}):
-        with VBoxView(style={'align': 'top', 'border-radius': 7, 'background-color': colors['card_bg'], 'border': f"1px solid {colors['border']}"}):
-            Label(f'Página {page_number}', style={
-                'font-weight': 'bold',
-                'padding': 6,
-                'color': colors['text'],
-            })
-            with TableGridView():
-                if not items:
-                    Label('Página sem conteúdo', style={'color': colors['text_muted'], 'padding': 6})
-
-                for index, record in enumerate(items):
-                    is_last_item = index == last_index
-                    with TableGridRow():
-                        Label(record, style= style | {
-                            'background-color': colors['table_row_even'] if index % 2 else colors['table_row_odd'],
-                            'color': colors['table_text'],
-                            'padding': 6,
-                            'border-bottom-right-radius': 6 if is_last_item else 0,
-                            'border-bottom-left-radius': 6 if is_last_item else 0
-                            })
-
-
-@component
-def Pages(_, pages=[], is_loading: bool = False):
-    colors = get_theme_colors()
-    with VBoxView():
-        Label("Páginas", style=get_section_header_style())
-        if is_loading:
-            Loading(text="Carregando páginas")
-        elif pages:
-            with HBoxView(style={'padding-bottom': 12}):
-                TablePagePreview(1, pages[0][:5])
-
-                TablePagePreview(
-                    len(pages) if len(pages) > 1 else 'última página',
-                    pages[-1][-5:] if len(pages) > 1 else []
-                )
-        else:
-            Label('Sem páginas ainda', style={'color': colors['text_muted']})
-
-
 def format_time(seconds: float) -> str:
     if seconds is None:
         return "N/A"
@@ -148,6 +101,250 @@ def format_time_short(seconds: float) -> str:
         return f"{seconds * 1000:.2f} ms"
 
     return f"{seconds:.4f} s"
+
+
+@component
+def MetricBadge(_, title: str, value: str, subtitle: str, highlight_color: str | None = None, bg_color: str | None = None, border_color: str | None = None):
+    colors = get_theme_colors()
+    highlight = highlight_color or colors['accent']
+    border = border_color or colors['border']
+
+    with VBoxView(style={
+        'border': f"1px solid {border}",
+        'border-radius': 8,
+        'padding-top': 10,
+        'padding-bottom': 10,
+        'padding-left': 14,
+        'padding-right': 14,
+        'margin': 4,
+        'align': 'top',
+        # 'min-width': '120px',
+    }):
+        Label(title, style={'font-size': 11, 'color': colors['text'], 'font-weight': 'bold'})
+        Label(value, style={'font-size': 17, 'font-weight': 'bold', 'color': highlight, 'padding-top': 2, 'padding-bottom': 2})
+        Label(subtitle, style={'font-size': 11, 'color': colors['text']})
+
+
+@component
+def TotalInfo(_, total_words: int, total_pages: int):
+    colors = get_theme_colors()
+    with HBoxView(style={'padding-bottom': 12}):
+        MetricBadge(
+            title="TOTAL DE PALAVRAS",
+            value=f"{total_words}",
+            subtitle=f"{total_words} registros carregados",
+            highlight_color=colors["accent"],
+        )
+        MetricBadge(
+            title="TOTAL DE PÁGINAS",
+            value=f"{total_pages}",
+            subtitle=f"{total_pages} página(s) gerada(s)",
+            highlight_color=colors["accent"],
+        )
+
+
+@component
+def Pages(
+    _,
+    pages: list = [],
+    total_words: int = 0,
+    is_loading: bool = False,
+):
+    colors = get_theme_colors()
+    page, set_page = use_state(1)
+
+    with VBoxView(style={'align': 'top'}):
+        if is_loading:
+            Loading(text="Carregando páginas")
+        elif not pages:
+            Label("Sem páginas ainda", style={"color": colors["text"]})
+        else:
+            total_w = total_words if total_words > 0 else sum(len(p) for p in pages)
+            total_p = len(pages)
+
+            TotalInfo(total_words=total_w, total_pages=total_p)
+
+            page_size = 10
+            total_pages_count = max(1, math.ceil(total_p / page_size))
+            safe_page = max(1, min(page, total_pages_count))
+
+            start_idx = (safe_page - 1) * page_size
+            end_idx = min(start_idx + page_size, total_p)
+            page_items_list = [(i, pages[i]) for i in range(start_idx, end_idx)]
+            page_options = [
+                f"Página {p} de {total_pages_count} (Páginas #{ (p - 1) * page_size } a #{ min(p * page_size, total_p) - 1 } de {total_p})"
+                for p in range(1, total_pages_count + 1)
+            ]
+
+            with HBoxView(style={"padding-top": 6, "padding-bottom": 6, "align": "left"}):
+                Label("Página:", style={"font-weight": "bold", "font-size": 13, "color": colors["text"], "margin-right": 8})
+                Dropdown(
+                    selection=safe_page - 1,
+                    options=page_options,
+                    on_select=lambda idx: set_page(idx + 1),
+                )
+
+            with VBoxView(style={"border": f"1px solid {colors['border_subtle']}", "border-radius": 6, "margin-top": 6}):
+                with TableGridView(style={"padding": 4}):
+                    with TableGridRow():
+                        Label("Página", style={"font-weight": "bold", "background-color": colors["bg_subtle"], "padding": 8, "font-size": 13, "color": colors["text"]})
+                        Label("Qtd. Registros", style={"font-weight": "bold", "background-color": colors["bg_subtle"], "padding": 8, "font-size": 13, "color": colors["text"]})
+                        Label("Conteúdo da Página", style={"font-weight": "bold", "background-color": colors["bg_subtle"], "padding": 8, "font-size": 13, "color": colors["text"]})
+
+                    for idx_loop, (page_idx, page_items) in enumerate(page_items_list):
+                        row_bg = colors["table_row_even"] if idx_loop % 2 == 0 else colors["table_row_odd"]
+                        items_str = ", ".join(f"'{item}'" for item in page_items) if page_items else "Página vazia"
+
+                        with TableGridRow():
+                            Label(f"Página #{page_idx}", style={"background-color": row_bg, "padding": 8, "font-size": 13, "font-weight": "bold", "color": colors["text"]})
+                            Label(f"{len(page_items)} registro(s)", style={"background-color": row_bg, "padding": 8, "font-size": 13, "color": colors["text"]})
+                            Label(items_str, word_wrap=True, style={"background-color": row_bg, "padding": 8, "font-size": 13, "color": colors["text"]})
+
+
+@component
+def Buckets(
+    _,
+    buckets: list = [],
+    total_words: int = 0,
+    build_time: float = 0.0,
+    is_loading: bool = False,
+):
+    colors = get_theme_colors()
+    page, set_page = use_state(1)
+
+    with VBoxView():
+        if is_loading:
+            Loading(text="Carregando buckets")
+        elif not buckets:
+            Label("Sem buckets ainda", style={"color": colors["text"]})
+        else:
+            nb = len(buckets)
+            fr = buckets[0].capacidade if buckets else 0
+            total_colisoes = quantidade_colisoes(buckets)
+            taxa_colisoes = calcular_taxa_colisoes(buckets, total_words)
+            qtd_overflow = quantidade_buckets_com_overflow(buckets)
+            taxa_overflow = calcular_taxa_overflow(buckets)
+
+            page_size = 5
+            total_pages = max(1, math.ceil(nb / page_size))
+            safe_page = max(1, min(page, total_pages))
+
+            start_idx = (safe_page - 1) * page_size
+            end_idx = min(start_idx + page_size, nb)
+            page_buckets = [(i, buckets[i]) for i in range(start_idx, end_idx)]
+            page_options = [
+                f"Página {p} de {total_pages} (Buckets #{ (p - 1) * page_size } a #{ min(p * page_size, nb) - 1 } de {nb})"
+                for p in range(1, total_pages + 1)
+            ]
+
+            with HBoxView(style={"padding-bottom": 8}):
+                MetricBadge(
+                    title="NB (TOTAL DE BUCKETS)",
+                    value=f"NB: {nb}",
+                    subtitle=f"{total_words} registros no total",
+                    highlight_color=colors["accent"],
+                )
+                MetricBadge(
+                    title="FR (CAPACIDADE DO BUCKET)",
+                    value=f"FR: {fr} chaves",
+                    subtitle="Capacidade máxima suportada",
+                    highlight_color=colors["accent"],
+                )
+                MetricBadge(
+                    title="TEMPO DE CONSTRUÇÃO",
+                    value=format_time_short(build_time),
+                    subtitle=format_time(build_time),
+                    highlight_color=colors["accent"],
+                )
+
+            # with HBoxView(style={"padding-bottom": 12}):
+                MetricBadge(
+                    title="TAXA DE COLISÕES",
+                    value=f"{taxa_colisoes:.2f}%",
+                    subtitle=f"{total_colisoes} colisão(ões) no total",
+                    highlight_color=colors["danger"] if total_colisoes > 0 else colors["success"],
+                    bg_color=colors["danger_bg"] if total_colisoes > 0 else colors["success_bg"],
+                    border_color=colors["danger_border"] if total_colisoes > 0 else colors["success_border"],
+                )
+                MetricBadge(
+                    title="BUCKETS EM OVERFLOW",
+                    value=f"{qtd_overflow} bucket(s)",
+                    subtitle=f"{qtd_overflow} de {nb} em overflow",
+                    highlight_color=colors["danger"] if qtd_overflow > 0 else colors["success"],
+                    bg_color=colors["danger_bg"] if qtd_overflow > 0 else colors["success_bg"],
+                    border_color=colors["danger_border"] if qtd_overflow > 0 else colors["success_border"],
+                )
+                MetricBadge(
+                    title="TAXA DE OVERFLOW",
+                    value=f"{taxa_overflow:.2f}%",
+                    subtitle=f"{qtd_overflow}/{nb} buckets com overflow",
+                    highlight_color=colors["danger"] if taxa_overflow > 0 else colors["success"],
+                    bg_color=colors["danger_bg"] if taxa_overflow > 0 else colors["success_bg"],
+                    border_color=colors["danger_border"] if taxa_overflow > 0 else colors["success_border"],
+                )
+
+            with HBoxView(style={"padding-top": 6, "padding-bottom": 6, "align": "left"}):
+                Label("Página:", style={"font-weight": "bold", "font-size": 13, "color": colors["text"], "margin-right": 8})
+                Dropdown(
+                    selection=safe_page - 1,
+                    options=page_options,
+                    on_select=lambda idx: set_page(idx + 1),
+                )
+
+            with VBoxView(style={"border": f"1px solid {colors['border_subtle']}", "border-radius": 6, "margin-top": 6}):
+                with TableGridView(style={"padding": 4}):
+                    with TableGridRow():
+                        Label("Bucket", style={"font-weight": "bold", "background-color": colors["bg_subtle"], "padding": 8, "font-size": 13, "color": colors["text"]})
+                        Label("Ocupação", style={"font-weight": "bold", "background-color": colors["bg_subtle"], "padding": 8, "font-size": 13, "color": colors["text"]})
+                        Label("Colisões", style={"font-weight": "bold", "background-color": colors["bg_subtle"], "padding": 8, "font-size": 13, "color": colors["text"]})
+                        Label("Overflow", style={"font-weight": "bold", "background-color": colors["bg_subtle"], "padding": 8, "font-size": 13, "color": colors["text"]})
+                        Label("Registros Principais (Chave → Pág)", style={"font-weight": "bold", "background-color": colors["bg_subtle"], "padding": 8, "font-size": 13, "color": colors["text"]})
+                        Label("Registros em Overflow (Chave → Pág)", style={"font-weight": "bold", "background-color": colors["bg_subtle"], "padding": 8, "font-size": 13, "color": colors["text"]})
+
+                    for idx_loop, (bucket_idx, bucket) in enumerate(page_buckets):
+                        row_bg = colors["table_row_even"] if idx_loop % 2 == 0 else colors["table_row_odd"]
+                        reg_str = ", ".join(f"'{chave}' (pág. {pag})" for chave, pag in bucket.registros) if bucket.registros else "Vazio"
+                        if bucket.possui_overflow:
+                            over_str = ", ".join(f"'{chave}' (pág. {pag})" for area in bucket.areas_overflow for chave, pag in area)
+                            total_over = sum(len(a) for a in bucket.areas_overflow)
+                            overflow_display = f"Sim ({total_over})"
+                        else:
+                            over_str = "—"
+                            overflow_display = "Não"
+
+                        with TableGridRow():
+                            Label(f"Bucket #{bucket_idx}", style={"background-color": row_bg, "padding": 8, "font-size": 13, "font-weight": "bold", "color": colors["text"]})
+                            Label(f"{len(bucket.registros)}/{bucket.capacidade}", style={"background-color": row_bg, "padding": 8, "font-size": 13, "color": colors["text"]})
+                            Label(f"{bucket.colisoes}", style={"background-color": row_bg, "padding": 8, "font-size": 13, "color": colors["danger"] if bucket.colisoes > 0 else colors["text"]})
+                            Label(overflow_display, style={"background-color": row_bg, "padding": 8, "font-size": 13, "font-weight": "600", "color": colors["danger"] if bucket.possui_overflow else colors["success"]})
+                            Label(reg_str, word_wrap=True, style={"background-color": row_bg, "padding": 8, "font-size": 13, "color": colors["text"]})
+                            Label(over_str, word_wrap=True, style={"background-color": row_bg, "padding": 8, "font-size": 13, "color": colors["danger"] if bucket.possui_overflow else colors["text_muted"]})
+
+
+@component
+def DataInfo(
+    _,
+    total_words: int,
+    pages: list,
+    buckets: list = [],
+    build_time: float = 0.0,
+    is_loading: bool = False,
+):
+    with VBoxView():
+        Label("Informações", style=get_section_header_style())
+
+        with TabView(labels=['Páginas', 'Buckets']):
+            Pages(
+                pages=pages,
+                total_words=total_words,
+                is_loading=is_loading,
+            ).set_key('Páginas')
+            Buckets(
+                buckets=buckets,
+                total_words=total_words,
+                build_time=build_time,
+                is_loading=is_loading,
+            ).set_key('Buckets')
 
 
 @component
@@ -217,30 +414,6 @@ def SearchResultCard(
                 with TableGridRow():
                     Label("Tempo de execução:", style={'font-weight': 'bold', 'padding-top': 4, 'padding-bottom': 4, 'padding-right': 8, 'padding-left': 0, 'font-size': 13, 'color': colors['text_muted']})
                     Label(format_time(tempo), style={'padding-top': 4, 'padding-bottom': 4, 'padding-left': 0, 'padding-right': 0, 'font-size': 13, 'color': colors['text']})
-
-
-@component
-def MetricBadge(_, title: str, value: str, subtitle: str, highlight_color: str | None = None, bg_color: str | None = None, border_color: str | None = None):
-    colors = get_theme_colors()
-    highlight = highlight_color or colors['accent']
-    # bg = bg_color or colors['bg_subtle']
-    border = border_color or colors['border']
-
-    with VBoxView(style={
-        # 'background-color': bg,
-        'border': f"1px solid {border}",
-        'border-radius': 8,
-        'padding-top': 10,
-        'padding-bottom': 10,
-        'padding-left': 14,
-        'padding-right': 14,
-        'margin': 4,
-        'align': 'top',
-        'min-width': '220px',
-    }):
-        Label(title, style={'font-size': 11, 'color': colors['text'], 'font-weight': 'bold'})
-        Label(value, style={'font-size': 17, 'font-weight': 'bold', 'color': highlight, 'padding-top': 2, 'padding-bottom': 2})
-        Label(subtitle, style={'font-size': 11, 'color': colors['text']})
 
 
 def conclusion_text(diff, custo_ind, custo_scn, ganho_custo):

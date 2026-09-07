@@ -121,6 +121,26 @@ class TestIndiceHash(unittest.TestCase):
         self.assertEqual(comparacao["custo_scan"], 3)
         self.assertEqual(comparacao["diferenca_custo"], 2)
 
+    def test_construir_indice_retorna_tempo_e_buckets_corretos(self):
+        paginas = [["palavra1", "palavra2", "palavra3"], ["palavra4", "palavra5"]]
+        fr = 2
+        buckets, tempo_execucao = construir_indice(paginas, fr)
+
+        self.assertGreaterEqual(tempo_execucao, 0.0)
+        self.assertGreater(len(buckets), 0)
+        for bucket in buckets:
+            self.assertEqual(bucket.capacidade, fr)
+
+        total_registros = sum(len(b.todos_registros()) for b in buckets)
+        self.assertEqual(total_registros, 5)
+
+        taxa_colisao = calcular_taxa_colisoes(buckets, 5)
+        self.assertGreaterEqual(taxa_colisao, 0.0)
+
+        taxa_overflow = calcular_taxa_overflow(buckets)
+        self.assertGreaterEqual(taxa_overflow, 0.0)
+        self.assertLessEqual(taxa_overflow, 100.0)
+
 
 if __name__ == "__main__":
     unittest.main()

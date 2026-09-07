@@ -1,9 +1,9 @@
 import asyncio
-from edifice import App, Button, HBoxView, Label, TextInput, VBoxView, VScrollView, Window, component, use_palette_edifice, use_state
+from edifice import App, Button, HBoxView, Label, TextInput, VBoxView, VScrollView, TabView, Window, component, use_palette_edifice, use_state
 
 from app.data import carrega_arquivo, paginacao
 from app.indice import buscar_chave_indice, buscar_por_table_scan, comparar_buscas, construir_indice
-from app.ui.components import SelectFile, TotalInfo, Pages, SearchResultCard, ComparisonDashboard
+from app.ui.components import SelectFile, DataInfo, SearchResultCard, ComparisonDashboard
 from app.ui.styles import (
     get_theme_colors,
     get_header_style,
@@ -31,6 +31,7 @@ def Screen(_):
     total_words, set_total_words = use_state(0)
     pages, set_pages = use_state([])
     index_buckets, set_index_buckets = use_state([])
+    build_time, set_build_time = use_state(0.0)
     search_key, set_search_key = use_state("")
     search_result, set_search_result = use_state(None)
     scan_result, set_scan_result = use_state(None)
@@ -53,13 +54,14 @@ def Screen(_):
             def _calcular():
                 w = carrega_arquivo(filepath)
                 p = paginacao(w, page_size)
-                idx, _ = construir_indice(p, page_size)
-                return w, p, idx
+                idx, t_idx = construir_indice(p, page_size)
+                return w, p, idx, t_idx
 
-            words, created_pages, indice = await asyncio.to_thread(_calcular)
+            words, created_pages, indice, t_idx = await asyncio.to_thread(_calcular)
             set_total_words(len(words))
             set_pages(created_pages)
             set_index_buckets(indice)
+            set_build_time(t_idx)
             set_search_result(None)
             set_scan_result(None)
             set_comparison({})
@@ -67,6 +69,7 @@ def Screen(_):
         except ValueError as error:
             set_pages([])
             set_index_buckets([])
+            set_build_time(0.0)
             set_message(str(error))
             set_is_message_error(True)
         finally:
@@ -80,7 +83,7 @@ def Screen(_):
             page_size = tamanho_pagina(page_size_text)
             words = carrega_arquivo(file_path)
             created_pages = paginacao(words, page_size)
-            indice, _ = construir_indice(created_pages, page_size)
+            indice, t_idx = construir_indice(created_pages, page_size)
         except ValueError as error:
             set_message(str(error))
             set_is_message_error(True)
@@ -90,6 +93,7 @@ def Screen(_):
         set_total_words(len(words))
         set_pages(created_pages)
         set_index_buckets(indice)
+        set_build_time(t_idx)
         set_search_result(None)
         set_scan_result(None)
         set_comparison({})
@@ -165,9 +169,13 @@ def Screen(_):
 
         Label(message, word_wrap=True, style={'padding-top': 14, 'padding-bottom': 14, 'color': colors['danger'] if is_message_error else colors['text_muted']})
 
-        TotalInfo(total_words=total_words, total_pages=len(pages))
-
-        Pages(pages=pages, is_loading=is_loading)
+        DataInfo(
+            total_words=total_words,
+            pages=pages,
+            buckets=index_buckets,
+            build_time=build_time,
+            is_loading=is_loading,
+        )
 
         Label("Pesquisa por chave", style=section_header_style | {'padding-top': 12, 'padding-bottom': 6})
         TextInput(
