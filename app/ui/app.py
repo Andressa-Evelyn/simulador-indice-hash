@@ -3,17 +3,13 @@ from edifice import App, Button, HBoxView, Label, TextInput, VBoxView, VScrollVi
 
 from app.data import carrega_arquivo, paginacao
 from app.indice import buscar_chave_indice, buscar_por_table_scan, comparar_buscas, construir_indice
-from app.ui.components import SelectFile, TotalInfo, Pages, Loading, SearchResultCard, ComparisonDashboard
+from app.ui.components import SelectFile, TotalInfo, Pages, SearchResultCard, ComparisonDashboard
 from app.ui.styles import (
     get_theme_colors,
     get_header_style,
     get_section_header_style,
     get_primary_button_style,
     get_secondary_button_style,
-    HEADER,
-    SECTION_HEADER,
-    PRIMARY_BUTTON,
-    SECONDARY_BUTTON,
 )
 from app.ui.hooks import use_debouce_state
 
@@ -29,7 +25,7 @@ def tamanho_pagina(value: str) -> int:
 
 
 @component
-def Screen(self):
+def Screen(_):
     colors = get_theme_colors()
     filepath, set_filepath = use_state("")
     total_words, set_total_words = use_state(0)
@@ -99,7 +95,7 @@ def Screen(self):
         set_comparison({})
         set_message("Dados carregados, páginas criadas e índice construído.")
 
-    def executar_busca_indice(event):
+    def executar_busca_indice(_):
         chave = search_key.strip()
         if not chave:
             set_message("Informe uma chave para realizar a busca por índice.")
@@ -116,7 +112,7 @@ def Screen(self):
             set_comparison({})
         set_message("Busca por índice executada.")
 
-    def executar_table_scan(event):
+    def executar_table_scan(_):
         chave = search_key.strip()
         if not chave:
             set_message("Informe uma chave para realizar o table scan.")
@@ -133,7 +129,7 @@ def Screen(self):
             set_comparison({})
         set_message("Table scan executado.")
 
-    def executar_ambas(event):
+    def executar_ambas(_):
         chave = search_key.strip()
         if not chave:
             set_message("Informe uma chave para realizar a busca.")
@@ -154,7 +150,7 @@ def Screen(self):
     primary_btn_style = get_primary_button_style()
     secondary_btn_style = get_secondary_button_style()
 
-    with VScrollView(style={'padding': 14, 'padding-top': 0, 'align': 'top'}):
+    with VBoxView(style={'padding': 14, 'padding-top': 0, 'align': 'top'}):
         Label("Carga de dados e paginação", style=header_style)
 
         SelectFile(filepath=filepath, on_file_change=select_file)
@@ -209,12 +205,13 @@ def Screen(self):
 
 
 @component
-def MainWindow(self):
+def MainWindow(_):
     use_palette_edifice()
     with Window(title="Simulador de Índice Hash Estático",
                 icon="assets/hashtag.png",
                 _size_open=(800, 600)):
-        Screen()
+        with VScrollView():
+            Screen()
 
 
 def create_app():
