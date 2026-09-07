@@ -120,7 +120,7 @@ def MetricBadge(_, title: str, value: str, subtitle: str, highlight_color: str |
     }):
         Label(title, style={'font-size': 11, 'color': colors['text'], 'font-weight': 'bold'})
         Label(value, style={'font-size': 17, 'font-weight': 'bold', 'color': highlight, 'padding-top': 2, 'padding-bottom': 2})
-        Label(subtitle, style={'font-size': 11, 'color': colors['text']})
+        Label(subtitle, word_wrap=True, style={'font-size': 11, 'color': colors['text']})
 
 
 @component
@@ -257,15 +257,15 @@ def Buckets(
 
             with HBoxView(style={"padding-bottom": 8}):
                 MetricBadge(
-                    title="NB (TOTAL DE BUCKETS)",
+                    title="TOTAL DE BUCKETS",
                     value=f"NB: {nb}",
                     subtitle=f"{total_words} registros no total",
                     highlight_color=colors["accent"],
                 )
                 MetricBadge(
-                    title="FR (CAPACIDADE DO BUCKET)",
+                    title="CAPACIDADE DO BUCKET",
                     value=f"FR: {fr} chaves",
-                    subtitle="Capacidade máxima suportada",
+                    subtitle="Cap. máxima suportada",
                     highlight_color=colors["accent"],
                 )
                 MetricBadge(

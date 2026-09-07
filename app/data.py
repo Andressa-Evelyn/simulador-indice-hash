@@ -19,4 +19,14 @@ def paginacao(registros: list[str], tamanho_pagina: int) -> list[list[str]]:
     if tamanho_pagina <= 0:
         raise ValueError("O tamanho da página deve ser maior que zero.")
 
-    return [registros[inicio:inicio + tamanho_pagina] for inicio in range(0, len(registros), tamanho_pagina)]
+    total_size = len(registros)
+    pages = [
+        []
+        for _ in range((total_size + tamanho_pagina - 1) // tamanho_pagina)
+    ]
+
+    for index, value in enumerate(registros):
+        page_index = index // tamanho_pagina
+        pages[page_index].append(value)
+
+    return pages
