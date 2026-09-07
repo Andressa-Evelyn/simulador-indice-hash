@@ -178,6 +178,7 @@ def Screen(self):
 @component
 def MainWindow(self):
     with Window(title="Simulador de Índice Hash Estático",
+                icon="assets/hashtag.png",
                 _size_open=(800, 600)):
         Screen()
 
