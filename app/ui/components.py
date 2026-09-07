@@ -2,7 +2,7 @@ import asyncio
 import math
 from typing import Callable
 from os.path import basename
-from edifice import component, HBoxView, VBoxView, Label, Button, Dropdown, TableGridView, TableGridRow, TabView, use_state, use_async
+from edifice import component, HBoxView, VBoxView, Label, Button, Dropdown, TableGridView, TableGridRow, TabView, use_state, use_async, use_effect
 from PySide6.QtWidgets import QFileDialog
 
 from app.indice import (
@@ -15,8 +15,6 @@ from app.ui.styles import (
     get_theme_colors,
     get_primary_button_style,
     get_section_header_style,
-    PRIMARY_BUTTON,
-    SECTION_HEADER,
 )
 
 
@@ -149,6 +147,7 @@ def Pages(
     pages: list = [],
     total_words: int = 0,
     is_loading: bool = False,
+    highlight_page: int | None = None,
 ):
     colors = get_theme_colors()
     page, set_page = use_state(1)
@@ -166,6 +165,14 @@ def Pages(
 
             page_size = 10
             total_pages_count = max(1, math.ceil(total_p / page_size))
+
+            def update_page_on_highlight():
+                if highlight_page is not None and total_p > 0 and 0 <= highlight_page < total_p:
+                    target_page = (highlight_page // page_size) + 1
+                    set_page(target_page)
+
+            use_effect(update_page_on_highlight, [highlight_page])
+
             safe_page = max(1, min(page, total_pages_count))
 
             start_idx = (safe_page - 1) * page_size
@@ -192,13 +199,15 @@ def Pages(
                         Label("Conteúdo da Página", style={"font-weight": "bold", "background-color": colors["bg_subtle"], "padding": 8, "font-size": 13, "color": colors["text"]})
 
                     for idx_loop, (page_idx, page_items) in enumerate(page_items_list):
-                        row_bg = colors["table_row_even"] if idx_loop % 2 == 0 else colors["table_row_odd"]
+                        is_highlighted = (highlight_page is not None and page_idx == highlight_page)
+                        row_bg = colors["accent_subtle"] if is_highlighted else (colors["table_row_even"] if idx_loop % 2 == 0 else colors["table_row_odd"])
                         items_str = ", ".join(f"'{item}'" for item in page_items) if page_items else "Página vazia"
+                        page_label = f"⭐ Página #{page_idx} (Acessada)" if is_highlighted else f"Página #{page_idx}"
 
                         with TableGridRow():
-                            Label(f"Página #{page_idx}", style={"background-color": row_bg, "padding": 8, "font-size": 13, "font-weight": "bold", "color": colors["text"]})
-                            Label(f"{len(page_items)} registro(s)", style={"background-color": row_bg, "padding": 8, "font-size": 13, "color": colors["text"]})
-                            Label(items_str, word_wrap=True, style={"background-color": row_bg, "padding": 8, "font-size": 13, "color": colors["text"]})
+                            Label(page_label, style={"background-color": row_bg, "padding": 8, "font-size": 13, "font-weight": "bold" if is_highlighted else "600", "color": colors["accent"] if is_highlighted else colors["text"]})
+                            Label(f"{len(page_items)} registro(s)", style={"background-color": row_bg, "padding": 8, "font-size": 13, "font-weight": "bold" if is_highlighted else "normal", "color": colors["accent"] if is_highlighted else colors["text"]})
+                            Label(items_str, word_wrap=True, style={"background-color": row_bg, "padding": 8, "font-size": 13, "font-weight": "bold" if is_highlighted else "normal", "color": colors["text"]})
 
 
 @component
@@ -208,6 +217,7 @@ def Buckets(
     total_words: int = 0,
     build_time: float = 0.0,
     is_loading: bool = False,
+    highlight_bucket: int | None = None,
 ):
     colors = get_theme_colors()
     page, set_page = use_state(1)
@@ -227,6 +237,14 @@ def Buckets(
 
             page_size = 5
             total_pages = max(1, math.ceil(nb / page_size))
+
+            def update_bucket_page_on_highlight():
+                if highlight_bucket is not None and nb > 0 and 0 <= highlight_bucket < nb:
+                    target_page = (highlight_bucket // page_size) + 1
+                    set_page(target_page)
+
+            use_effect(update_bucket_page_on_highlight, [highlight_bucket])
+
             safe_page = max(1, min(page, total_pages))
 
             start_idx = (safe_page - 1) * page_size
@@ -257,7 +275,6 @@ def Buckets(
                     highlight_color=colors["accent"],
                 )
 
-            # with HBoxView(style={"padding-bottom": 12}):
                 MetricBadge(
                     title="TAXA DE COLISÕES",
                     value=f"{taxa_colisoes:.2f}%",
@@ -302,7 +319,9 @@ def Buckets(
                         Label("Registros em Overflow (Chave → Pág)", style={"font-weight": "bold", "background-color": colors["bg_subtle"], "padding": 8, "font-size": 13, "color": colors["text"]})
 
                     for idx_loop, (bucket_idx, bucket) in enumerate(page_buckets):
-                        row_bg = colors["table_row_even"] if idx_loop % 2 == 0 else colors["table_row_odd"]
+                        is_highlighted = (highlight_bucket is not None and bucket_idx == highlight_bucket)
+                        row_bg = colors["accent_subtle"] if is_highlighted else (colors["table_row_even"] if idx_loop % 2 == 0 else colors["table_row_odd"])
+                        bucket_label = f"⭐ Bucket #{bucket_idx} (Acessado)" if is_highlighted else f"Bucket #{bucket_idx}"
                         reg_str = ", ".join(f"'{chave}' (pág. {pag})" for chave, pag in bucket.registros) if bucket.registros else "Vazio"
                         if bucket.possui_overflow:
                             over_str = ", ".join(f"'{chave}' (pág. {pag})" for area in bucket.areas_overflow for chave, pag in area)
@@ -313,7 +332,7 @@ def Buckets(
                             overflow_display = "Não"
 
                         with TableGridRow():
-                            Label(f"Bucket #{bucket_idx}", style={"background-color": row_bg, "padding": 8, "font-size": 13, "font-weight": "bold", "color": colors["text"]})
+                            Label(bucket_label, style={"background-color": row_bg, "padding": 8, "font-size": 13, "font-weight": "bold" if is_highlighted else "600", "color": colors["accent"] if is_highlighted else colors["text"]})
                             Label(f"{len(bucket.registros)}/{bucket.capacidade}", style={"background-color": row_bg, "padding": 8, "font-size": 13, "color": colors["text"]})
                             Label(f"{bucket.colisoes}", style={"background-color": row_bg, "padding": 8, "font-size": 13, "color": colors["danger"] if bucket.colisoes > 0 else colors["text"]})
                             Label(overflow_display, style={"background-color": row_bg, "padding": 8, "font-size": 13, "font-weight": "600", "color": colors["danger"] if bucket.possui_overflow else colors["success"]})
@@ -329,6 +348,8 @@ def DataInfo(
     buckets: list = [],
     build_time: float = 0.0,
     is_loading: bool = False,
+    highlight_page: int | None = None,
+    highlight_bucket: int | None = None,
 ):
     with VBoxView():
         Label("Informações", style=get_section_header_style())
@@ -338,12 +359,14 @@ def DataInfo(
                 pages=pages,
                 total_words=total_words,
                 is_loading=is_loading,
+                highlight_page=highlight_page,
             ).set_key('Páginas')
             Buckets(
                 buckets=buckets,
                 total_words=total_words,
                 build_time=build_time,
                 is_loading=is_loading,
+                highlight_bucket=highlight_bucket,
             ).set_key('Buckets')
 
 
@@ -400,12 +423,25 @@ def SearchResultCard(
 
                 if is_index and bucket is not None:
                     with TableGridRow():
-                        Label("Bucket Hash:", style={'font-weight': 'bold', 'padding-top': 4, 'padding-bottom': 4, 'padding-right': 8, 'padding-left': 0, 'font-size': 13, 'color': colors['text_muted']})
-                        Label(f"Bucket #{bucket}", style={'padding-top': 4, 'padding-bottom': 4, 'padding-left': 0, 'padding-right': 0, 'font-size': 13, 'color': colors['text']})
+                        Label("Bucket Hash (acessado):", style={'font-weight': 'bold', 'padding-top': 4, 'padding-bottom': 4, 'padding-right': 8, 'padding-left': 0, 'font-size': 13, 'color': colors['text_muted']})
+                        Label(f"Bucket #{bucket}", style={'padding-top': 4, 'padding-bottom': 4, 'padding-left': 0, 'padding-right': 0, 'font-size': 13, 'font-weight': 'bold', 'color': colors['accent']})
 
                 with TableGridRow():
-                    Label("Localização:", style={'font-weight': 'bold', 'padding-top': 4, 'padding-bottom': 4, 'padding-right': 8, 'padding-left': 0, 'font-size': 13, 'color': colors['text_muted']})
-                    Label(pagina_str, style={'padding-top': 4, 'padding-bottom': 4, 'padding-left': 0, 'padding-right': 0, 'font-size': 13, 'color': colors['text']})
+                    label_loc = "Página acessada:" if is_index else "Localização:"
+                    loc_val = f"Página #{pagina}" if pagina is not None else "N/A"
+                    Label(label_loc, style={'font-weight': 'bold', 'padding-top': 4, 'padding-bottom': 4, 'padding-right': 8, 'padding-left': 0, 'font-size': 13, 'color': colors['text_muted']})
+                    Label(
+                        loc_val,
+                        style={
+                            'padding-top': 4,
+                            'padding-bottom': 4,
+                            'padding-left': 0,
+                            'padding-right': 0,
+                            'font-size': 13,
+                            'font-weight': 'bold' if (is_index and pagina is not None) else '600',
+                            'color': colors['accent'] if (is_index and pagina is not None) else colors['text'],
+                        }
+                    )
 
                 with TableGridRow():
                     Label("Custo (I/O páginas):", style={'font-weight': 'bold', 'padding-top': 4, 'padding-bottom': 4, 'padding-right': 8, 'padding-left': 0, 'font-size': 13, 'color': colors['text_muted']})
@@ -416,15 +452,16 @@ def SearchResultCard(
                     Label(format_time(tempo), style={'padding-top': 4, 'padding-bottom': 4, 'padding-left': 0, 'padding-right': 0, 'font-size': 13, 'color': colors['text']})
 
 
-def conclusion_text(diff, custo_ind, custo_scn, ganho_custo):
+def conclusion_text(diff, custo_ind, custo_scn, ganho_custo, bucket=None):
+    bucket_info = f" (mapeada no Bucket #{bucket})" if bucket is not None else ""
     if diff > 0:
         return (
-            f"💡 Conclusão: A busca por Índice Hash acessou diretamente a página alvo (custo de {custo_ind} página), "
+            f"💡 Conclusão: A busca por Índice Hash acessou diretamente a página alvo{bucket_info} (custo de {custo_ind} página), "
             f"enquanto o Table Scan precisou percorrer sequencialmente {custo_scn} páginas. "
             f"Isso gerou uma economia de {diff} leituras de página ({ganho_custo:.1f}% menor custo de I/O)."
         )
     if custo_ind == custo_scn:
-        return "💡 Conclusão: O registro estava na primeira página, logo ambos os métodos realizaram a leitura de 1 página."
+        return f"💡 Conclusão: O registro estava na primeira página{bucket_info}, logo ambos os métodos realizaram a leitura de 1 página."
 
     return "💡 Conclusão: Comparação realizada entre os dois métodos de busca."
 
@@ -490,26 +527,33 @@ def ComparisonDashboard(_, search_result: dict, scan_result: dict, comparison: d
                     Label("Encontrada" if scan_result.get("encontrada") else "Não encontrada", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['text']})
                     Label("Idêntico" if search_result.get("encontrada") == scan_result.get("encontrada") else "Divergente", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'font-weight': '600', 'color': colors['text']})
 
+                bucket_ind = search_result.get("bucket")
+                with TableGridRow():
+                    Label("Bucket Hash", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text']})
+                    Label(f"Bucket #{bucket_ind}" if bucket_ind is not None else "N/A", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'font-weight': 'bold' if bucket_ind is not None else 'normal', 'color': colors['accent'] if bucket_ind is not None else colors['text']})
+                    Label("N/A", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text_muted']})
+                    Label(f"Mapeado no Bucket #{bucket_ind}" if bucket_ind is not None else "—", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text']})
+
                 pag_ind = search_result.get("pagina")
                 pag_scn = scan_result.get("pagina")
                 with TableGridRow():
-                    Label("Página", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text']})
-                    Label(f"Página {pag_ind}" if pag_ind is not None else "N/A", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text']})
-                    Label(f"Página {pag_scn}" if pag_scn is not None else "N/A", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text']})
-                    Label("Mesma página" if pag_ind == pag_scn else "Diferente", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['success'] if pag_ind == pag_scn else colors['danger']})
+                    Label("Página", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['text']})
+                    Label(f"Página #{pag_ind}" if pag_ind is not None else "N/A", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['accent'] if pag_ind is not None else colors['text'], 'font-weight': 'bold' if pag_ind is not None else 'normal'})
+                    Label(f"Página #{pag_scn}" if pag_scn is not None else "N/A", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['text']})
+                    Label("Mesma página" if pag_ind == pag_scn else "Diferente", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['success'] if pag_ind == pag_scn else colors['danger']})
 
                 with TableGridRow():
-                    Label("Páginas Lidas (I/O)", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'font-weight': '600', 'color': colors['text']})
-                    Label(f"{custo_ind} página(s)", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['accent'], 'font-weight': '600'})
-                    Label(f"{custo_scn} página(s)", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['danger'], 'font-weight': '600'})
-                    Label(f"-{dif_custo} páginas ({ganho_custo:.1f}%)" if dif_custo > 0 else f"{dif_custo} páginas", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'font-weight': 'bold', 'color': colors['success'] if dif_custo > 0 else colors['text_muted']})
+                    Label("Páginas Lidas (I/O)", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'font-weight': '600', 'color': colors['text']})
+                    Label(f"{custo_ind} página(s)", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['accent'], 'font-weight': '600'})
+                    Label(f"{custo_scn} página(s)", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['danger'], 'font-weight': '600'})
+                    Label(f"-{dif_custo} páginas ({ganho_custo:.1f}%)" if dif_custo > 0 else f"{dif_custo} páginas", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'font-weight': 'bold', 'color': colors['success'] if dif_custo > 0 else colors['text_muted']})
 
                 with TableGridRow():
-                    Label("Tempo de Execução", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text']})
-                    Label(format_time_short(tempo_ind), style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text']})
-                    Label(format_time_short(tempo_scn), style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text']})
-                    Label(f"{ganho_tempo:+.1f}%" if ganho_tempo != 0 else "0.0%", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'font-weight': 'bold', 'color': colors['success'] if ganho_tempo > 0 else colors['danger'] if ganho_tempo < 0 else colors['text_muted']})
+                    Label("Tempo de Execução", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['text']})
+                    Label(format_time_short(tempo_ind), style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['text']})
+                    Label(format_time_short(tempo_scn), style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['text']})
+                    Label(f"{ganho_tempo:+.1f}%" if ganho_tempo != 0 else "0.0%", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'font-weight': 'bold', 'color': colors['success'] if ganho_tempo > 0 else colors['danger'] if ganho_tempo < 0 else colors['text_muted']})
 
         with VBoxView(style={'padding-top': 10}):
-            conclusao = conclusion_text(dif_custo, custo_ind, custo_scn, ganho_custo)
+            conclusao = conclusion_text(dif_custo, custo_ind, custo_scn, ganho_custo, search_result.get("bucket"))
             Label(conclusao, word_wrap=True, style={'color': colors['text'], 'font-size': 12, 'background-color': colors['bg_subtle'], 'padding-top': 8, 'padding-bottom': 8, 'padding-left': 12, 'padding-right': 12, 'border-radius': 6})

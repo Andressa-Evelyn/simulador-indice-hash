@@ -1,5 +1,5 @@
 import asyncio
-from edifice import App, Button, HBoxView, Label, TextInput, VBoxView, VScrollView, TabView, Window, component, use_palette_edifice, use_state
+from edifice import App, Button, HBoxView, Label, TextInput, VBoxView, VScrollView, Window, component, use_palette_edifice, use_state
 
 from app.data import carrega_arquivo, paginacao
 from app.indice import buscar_chave_indice, buscar_por_table_scan, comparar_buscas, construir_indice
@@ -175,6 +175,8 @@ def Screen(_):
             buckets=index_buckets,
             build_time=build_time,
             is_loading=is_loading,
+            highlight_page=search_result.get("pagina") if search_result and search_result.get("encontrada") else None,
+            highlight_bucket=search_result.get("bucket") if search_result else None,
         )
 
         Label("Pesquisa por chave", style=section_header_style | {'padding-top': 12, 'padding-bottom': 6})
