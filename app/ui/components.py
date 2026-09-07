@@ -4,14 +4,22 @@ from os.path import basename
 from edifice import component, HBoxView, VBoxView, Label, Button, TableGridView, TableGridRow, use_state, use_async
 from PySide6.QtWidgets import QFileDialog
 
-from app.ui.styles import PRIMARY_BUTTON, SECTION_HEADER
+from app.ui.styles import (
+    get_theme_colors,
+    get_primary_button_style,
+    get_secondary_button_style,
+    get_section_header_style,
+    PRIMARY_BUTTON,
+    SECTION_HEADER,
+)
 
 
 @component
 def InfoLabel(_, label: str, value: str):
+    colors = get_theme_colors()
     with HBoxView(style={'align': 'left'}):
-        Label(f'{label}: ', style={'font-weight': 'bold', 'font-size': 14})
-        Label(value, style={'font-size': 14})
+        Label(f'{label}: ', style={'font-weight': 'bold', 'font-size': 14, 'color': colors['text']})
+        Label(value, style={'font-size': 14, 'color': colors['text']})
 
 
 def use_timer(effect: Callable, interval=0.5):
@@ -25,6 +33,7 @@ def use_timer(effect: Callable, interval=0.5):
 
 @component
 def Loading(_, text: str = "Carregando", style={}):
+    colors = get_theme_colors()
     dots, set_dots = use_state('.')
 
     def change_text():
@@ -35,15 +44,14 @@ def Loading(_, text: str = "Carregando", style={}):
 
     use_timer(change_text, interval=0.3)
 
-    Label(f'{text}{dots}', style=style)
-
-    
+    Label(f'{text}{dots}', style={'color': colors['text_muted']} | style)
 
 
 @component
 def SelectFile(_, filepath: str,
                on_file_change: Callable[[str], None]):
     is_loading, set_is_loading = use_state(False)
+    btn_style = get_primary_button_style()
     
     def select_file(_):
         set_is_loading(True)
@@ -64,7 +72,7 @@ def SelectFile(_, filepath: str,
     with HBoxView(style={'padding-bottom': 12}):
         message = 'Arquivo' if not is_loading else 'Carregando arquivo'
         InfoLabel(message, basename(filepath) if filepath else 'nenhum selecionado')
-        Button("Selecione o arquivo", on_click=select_file, style=PRIMARY_BUTTON | { 'max-width': '120px', 'opacity': 0.8 if is_loading else 1.0})
+        Button("Selecione o arquivo", on_click=select_file, style=btn_style | { 'max-width': '120px', 'opacity': 0.8 if is_loading else 1.0})
 
 
 @component
@@ -76,23 +84,25 @@ def TotalInfo(_, total_words: int, total_pages: int):
 
 @component
 def TablePagePreview(_, page_number: int, items = [], style={}):
+    colors = get_theme_colors()
     last_index = len(items) - 1
     with VBoxView(style=style | {'padding': 6}):
-        with VBoxView(style={'align': 'top', 'border-radius': 7}):
+        with VBoxView(style={'align': 'top', 'border-radius': 7, 'background-color': colors['card_bg'], 'border': f"1px solid {colors['border']}"}):
             Label(f'Página {page_number}', style={
                 'font-weight': 'bold',
-                'padding': 6
+                'padding': 6,
+                'color': colors['text'],
             })
             with TableGridView():
                 if not items:
-                    Label('Página sem conteúdo')
+                    Label('Página sem conteúdo', style={'color': colors['text_muted'], 'padding': 6})
 
                 for index, record in enumerate(items):
                     is_last_item = index == last_index
                     with TableGridRow():
                         Label(record, style= style | {
-                            'background-color': '#efefef' if index % 2 else "#8f8f8f",
-                            'color': '#010101',
+                            'background-color': colors['table_row_even'] if index % 2 else colors['table_row_odd'],
+                            'color': colors['table_text'],
                             'padding': 6,
                             'border-bottom-right-radius': 6 if is_last_item else 0,
                             'border-bottom-left-radius': 6 if is_last_item else 0
@@ -101,12 +111,12 @@ def TablePagePreview(_, page_number: int, items = [], style={}):
 
 @component
 def Pages(_, pages=[], is_loading: bool = False):
+    colors = get_theme_colors()
     with VBoxView():
-        Label("Páginas", style=SECTION_HEADER)
+        Label("Páginas", style=get_section_header_style())
         if is_loading:
             Loading(text="Carregando páginas")
         elif pages:
-            # Label(page_preview(1, pages[0]), word_wrap=True)
             with HBoxView(style={'padding-bottom': 12}):
                 TablePagePreview(1, pages[0][:5])
 
@@ -114,7 +124,219 @@ def Pages(_, pages=[], is_loading: bool = False):
                     len(pages) if len(pages) > 1 else 'última página',
                     pages[-1][-5:] if len(pages) > 1 else []
                 )
-            # if len(pages) > 1:
-            #     Label(page_preview(len(pages), pages[-1]), word_wrap=True)
         else:
-            Label('Sem páginas ainda')
+            Label('Sem páginas ainda', style={'color': colors['text_muted']})
+
+
+def format_time(seconds: float) -> str:
+    if seconds is None:
+        return "N/A"
+    if seconds < 0.001:
+        return f"{seconds * 1000:.4f} ms ({seconds:.8f} s)"
+    if seconds < 1.0:
+        return f"{seconds * 1000:.2f} ms ({seconds:.6f} s)"
+
+    return f"{seconds:.4f} s"
+
+
+def format_time_short(seconds: float) -> str:
+    if seconds is None:
+        return "N/A"
+    if seconds < 0.001:
+        return f"{seconds * 1000:.4f} ms"
+    if seconds < 1.0:
+        return f"{seconds * 1000:.2f} ms"
+
+    return f"{seconds:.4f} s"
+
+
+@component
+def SearchResultCard(
+    _,
+    title: str,
+    result: dict | None,
+    is_index: bool = False,
+    placeholder_text: str = "Nenhuma busca realizada.",
+):
+    colors = get_theme_colors()
+    with VBoxView(style={
+        'background-color': colors['card_bg'],
+        'border': f"1px solid {colors['border']}",
+        'border-radius': 8,
+        'padding': 12,
+        'margin': 4,
+        'align': 'top',
+        'min-width': '330px',
+    }):
+        with HBoxView(style={'align': 'left', 'padding-bottom': 8}):
+            Label(title, style={'font-weight': 'bold', 'font-size': 15, 'color': colors['text']})
+            if result is not None:
+                result_found = result.get("encontrada", False)
+                with HBoxView(style={'align': 'right'}):
+                    Label(
+                        "✅ Encontrada" if result_found else "❌ Não encontrada",
+                        style={
+                            'color': colors['success'] if result_found else colors['danger'],
+                            'padding-top': 2,
+                            'padding-bottom': 2,
+                            'padding-left': 8,
+                            'padding-right': 8,
+                            'font-weight': 'bold',
+                            'font-size': 11,
+                        }
+                    )
+
+        if result is None:
+            with VBoxView(style={'padding-top': 16, 'padding-bottom': 16, 'padding-left': 0, 'padding-right': 0, 'align': 'center'}):
+                Label(placeholder_text, style={'color': colors['text_muted'], 'font-style': 'italic', 'font-size': 13})
+        else:
+            pagina = result.get("pagina")
+            pagina_str = f"Página {pagina}" if pagina is not None else "N/A"
+            custo = result.get("custo_paginas_lidas", 0)
+            tempo = result.get("tempo_execucao", 0.0)
+            bucket = result.get("bucket")
+
+            with TableGridView(style={'padding-top': 8}):
+                with TableGridRow():
+                    Label("Chave buscada:", style={'font-weight': 'bold', 'padding-top': 4, 'padding-bottom': 4, 'padding-right': 8, 'padding-left': 0, 'font-size': 13, 'color': colors['text_muted']})
+                    Label(f'"{result.get("chave", "")}"', style={'padding-top': 4, 'padding-bottom': 4, 'padding-left': 0, 'padding-right': 0, 'font-size': 13, 'font-weight': '600', 'color': colors['text']})
+
+                if is_index and bucket is not None:
+                    with TableGridRow():
+                        Label("Bucket Hash:", style={'font-weight': 'bold', 'padding-top': 4, 'padding-bottom': 4, 'padding-right': 8, 'padding-left': 0, 'font-size': 13, 'color': colors['text_muted']})
+                        Label(f"Bucket #{bucket}", style={'padding-top': 4, 'padding-bottom': 4, 'padding-left': 0, 'padding-right': 0, 'font-size': 13, 'color': colors['text']})
+
+                with TableGridRow():
+                    Label("Localização:", style={'font-weight': 'bold', 'padding-top': 4, 'padding-bottom': 4, 'padding-right': 8, 'padding-left': 0, 'font-size': 13, 'color': colors['text_muted']})
+                    Label(pagina_str, style={'padding-top': 4, 'padding-bottom': 4, 'padding-left': 0, 'padding-right': 0, 'font-size': 13, 'color': colors['text']})
+
+                with TableGridRow():
+                    Label("Custo (I/O páginas):", style={'font-weight': 'bold', 'padding-top': 4, 'padding-bottom': 4, 'padding-right': 8, 'padding-left': 0, 'font-size': 13, 'color': colors['text_muted']})
+                    Label(f"{custo} página(s) lida(s)", style={'padding-top': 4, 'padding-bottom': 4, 'padding-left': 0, 'padding-right': 0, 'font-size': 13, 'font-weight': '600', 'color': colors['accent'] if is_index else colors['danger']})
+
+                with TableGridRow():
+                    Label("Tempo de execução:", style={'font-weight': 'bold', 'padding-top': 4, 'padding-bottom': 4, 'padding-right': 8, 'padding-left': 0, 'font-size': 13, 'color': colors['text_muted']})
+                    Label(format_time(tempo), style={'padding-top': 4, 'padding-bottom': 4, 'padding-left': 0, 'padding-right': 0, 'font-size': 13, 'color': colors['text']})
+
+
+@component
+def MetricBadge(_, title: str, value: str, subtitle: str, highlight_color: str | None = None, bg_color: str | None = None, border_color: str | None = None):
+    colors = get_theme_colors()
+    highlight = highlight_color or colors['accent']
+    # bg = bg_color or colors['bg_subtle']
+    border = border_color or colors['border']
+
+    with VBoxView(style={
+        # 'background-color': bg,
+        'border': f"1px solid {border}",
+        'border-radius': 8,
+        'padding-top': 10,
+        'padding-bottom': 10,
+        'padding-left': 14,
+        'padding-right': 14,
+        'margin': 4,
+        'align': 'top',
+        'min-width': '220px',
+    }):
+        Label(title, style={'font-size': 11, 'color': colors['text'], 'font-weight': 'bold'})
+        Label(value, style={'font-size': 17, 'font-weight': 'bold', 'color': highlight, 'padding-top': 2, 'padding-bottom': 2})
+        Label(subtitle, style={'font-size': 11, 'color': colors['text']})
+
+
+def conclusion_text(diff, custo_ind, custo_scn, ganho_custo):
+    if diff > 0:
+        return (
+            f"💡 Conclusão: A busca por Índice Hash acessou diretamente a página alvo (custo de {custo_ind} página), "
+            f"enquanto o Table Scan precisou percorrer sequencialmente {custo_scn} páginas. "
+            f"Isso gerou uma economia de {diff} leituras de página ({ganho_custo:.1f}% menor custo de I/O)."
+        )
+    if custo_ind == custo_scn:
+        return "💡 Conclusão: O registro estava na primeira página, logo ambos os métodos realizaram a leitura de 1 página."
+
+    return "💡 Conclusão: Comparação realizada entre os dois métodos de busca."
+
+
+@component
+def ComparisonDashboard(_, search_result: dict, scan_result: dict, comparison: dict):
+    colors = get_theme_colors()
+    custo_ind = comparison.get("custo_indice", 0)
+    custo_scn = comparison.get("custo_scan", 0)
+    dif_custo = comparison.get("diferenca_custo", 0)
+    ganho_custo = comparison.get("ganho_custo_percentual", 0.0)
+
+    tempo_ind = comparison.get("tempo_indice", 0.0)
+    tempo_scn = comparison.get("tempo_scan", 0.0)
+    dif_tempo = comparison.get("diferenca_tempo", 0.0)
+    ganho_tempo = comparison.get("ganho_tempo_percentual", 0.0)
+
+    speedup_text = ""
+    if tempo_ind > 0 and tempo_scn > 0:
+        factor = tempo_scn / tempo_ind
+        if factor >= 1.0:
+            speedup_text = f" ({factor:.1f}x mais rápido)"
+
+    with VBoxView(style={
+        'background-color': colors['card_bg'],
+        'border': f"1px solid {colors['border']}",
+        'border-radius': 8,
+        'padding': 18,
+        'margin-top': 12,
+        'margin-bottom': 12,
+    }):
+        Label("⚖️ Comparativo de Desempenho (Índice vs. Table Scan)", style={'font-weight': 'bold', 'font-size': 16, 'padding-bottom': 10, 'color': colors['text']})
+
+        with HBoxView(style={'padding-bottom': 12}):
+            MetricBadge(
+                title="ECONOMIA DE I/O (PÁGINAS)",
+                value=f"{dif_custo} pág(s) economizada(s)",
+                subtitle=f"Redução de {ganho_custo:.1f}% em acessos a disco",
+                highlight_color=colors['success'] if dif_custo > 0 else colors['text_muted'],
+                bg_color=colors['success_bg'] if dif_custo > 0 else colors['bg_subtle'],
+                border_color=colors['success_border'] if dif_custo > 0 else colors['border'],
+            )
+            MetricBadge(
+                title="GANHO DE TEMPO",
+                value=f"{ganho_tempo:+.1f}%{speedup_text}",
+                subtitle=f"Diferença de {format_time_short(abs(dif_tempo))} ({format_time_short(tempo_ind)} vs {format_time_short(tempo_scn)})",
+                highlight_color=colors['success'] if ganho_tempo > 0 else colors['danger'] if ganho_tempo < 0 else colors['text_muted'],
+                bg_color=colors['success_bg'] if ganho_tempo > 0 else colors['danger_bg'] if ganho_tempo < 0 else colors['bg_subtle'],
+                border_color=colors['success_border'] if ganho_tempo > 0 else colors['danger_border'] if ganho_tempo < 0 else colors['border'],
+            )
+
+        with VBoxView(style={'border': f"1px solid {colors['border_subtle']}", 'border-radius': 6}):
+            with TableGridView(style={'padding': 4}):
+                with TableGridRow():
+                    Label("Métrica", style={'font-weight': 'bold', 'background-color': colors['bg_subtle'], 'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['text']})
+                    Label("Busca por Índice Hash", style={'font-weight': 'bold', 'background-color': colors['bg_subtle'], 'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['accent']})
+                    Label("Table Scan", style={'font-weight': 'bold', 'background-color': colors['bg_subtle'], 'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['danger']})
+                    Label("Diferença / Vantagem", style={'font-weight': 'bold', 'background-color': colors['bg_subtle'], 'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['success']})
+
+                with TableGridRow():
+                    Label("Status", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['text']})
+                    Label("Encontrada" if search_result.get("encontrada") else "Não encontrada", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['text']})
+                    Label("Encontrada" if scan_result.get("encontrada") else "Não encontrada", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['text']})
+                    Label("Idêntico" if search_result.get("encontrada") == scan_result.get("encontrada") else "Divergente", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'font-weight': '600', 'color': colors['text']})
+
+                pag_ind = search_result.get("pagina")
+                pag_scn = scan_result.get("pagina")
+                with TableGridRow():
+                    Label("Página", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text']})
+                    Label(f"Página {pag_ind}" if pag_ind is not None else "N/A", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text']})
+                    Label(f"Página {pag_scn}" if pag_scn is not None else "N/A", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text']})
+                    Label("Mesma página" if pag_ind == pag_scn else "Diferente", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['success'] if pag_ind == pag_scn else colors['danger']})
+
+                with TableGridRow():
+                    Label("Páginas Lidas (I/O)", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'font-weight': '600', 'color': colors['text']})
+                    Label(f"{custo_ind} página(s)", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['accent'], 'font-weight': '600'})
+                    Label(f"{custo_scn} página(s)", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'color': colors['danger'], 'font-weight': '600'})
+                    Label(f"-{dif_custo} páginas ({ganho_custo:.1f}%)" if dif_custo > 0 else f"{dif_custo} páginas", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'font-weight': 'bold', 'color': colors['success'] if dif_custo > 0 else colors['text_muted']})
+
+                with TableGridRow():
+                    Label("Tempo de Execução", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text']})
+                    Label(format_time_short(tempo_ind), style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text']})
+                    Label(format_time_short(tempo_scn), style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'color': colors['text']})
+                    Label(f"{ganho_tempo:+.1f}%" if ganho_tempo != 0 else "0.0%", style={'padding-top': 8, 'padding-bottom': 8, 'padding-left': 10, 'padding-right': 10, 'font-size': 13, 'background-color': colors['bg_alt'], 'font-weight': 'bold', 'color': colors['success'] if ganho_tempo > 0 else colors['danger'] if ganho_tempo < 0 else colors['text_muted']})
+
+        with VBoxView(style={'padding-top': 10}):
+            conclusao = conclusion_text(dif_custo, custo_ind, custo_scn, ganho_custo)
+            Label(conclusao, word_wrap=True, style={'color': colors['text'], 'font-size': 12, 'background-color': colors['bg_subtle'], 'padding-top': 8, 'padding-bottom': 8, 'padding-left': 12, 'padding-right': 12, 'border-radius': 6})

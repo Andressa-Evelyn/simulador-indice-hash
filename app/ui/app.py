@@ -1,10 +1,20 @@
 import asyncio
-from edifice import App, Button, HBoxView, Label, TextInput, VBoxView, VScrollView, Window, component, use_state
+from edifice import App, Button, HBoxView, Label, TextInput, VBoxView, VScrollView, Window, component, use_palette_edifice, use_state
 
 from app.data import carrega_arquivo, paginacao
 from app.indice import buscar_chave_indice, buscar_por_table_scan, comparar_buscas, construir_indice
-from app.ui.components import SelectFile, TotalInfo, Pages, Loading
-from app.ui.styles import HEADER, SECTION_HEADER
+from app.ui.components import SelectFile, TotalInfo, Pages, Loading, SearchResultCard, ComparisonDashboard
+from app.ui.styles import (
+    get_theme_colors,
+    get_header_style,
+    get_section_header_style,
+    get_primary_button_style,
+    get_secondary_button_style,
+    HEADER,
+    SECTION_HEADER,
+    PRIMARY_BUTTON,
+    SECONDARY_BUTTON,
+)
 from app.ui.hooks import use_debouce_state
 
 
@@ -20,6 +30,7 @@ def tamanho_pagina(value: str) -> int:
 
 @component
 def Screen(self):
+    colors = get_theme_colors()
     filepath, set_filepath = use_state("")
     total_words, set_total_words = use_state(0)
     pages, set_pages = use_state([])
@@ -99,8 +110,10 @@ def Screen(self):
 
         resultado = buscar_chave_indice(index_buckets, chave)
         set_search_result(resultado)
-        if scan_result is not None:
+        if scan_result is not None and scan_result.get("chave") == chave:
             set_comparison(comparar_buscas(resultado, scan_result))
+        else:
+            set_comparison({})
         set_message("Busca por índice executada.")
 
     def executar_table_scan(event):
@@ -114,72 +127,90 @@ def Screen(self):
 
         resultado = buscar_por_table_scan(pages, chave)
         set_scan_result(resultado)
-        if search_result is not None:
+        if search_result is not None and search_result.get("chave") == chave:
             set_comparison(comparar_buscas(search_result, resultado))
+        else:
+            set_comparison({})
         set_message("Table scan executado.")
 
+    def executar_ambas(event):
+        chave = search_key.strip()
+        if not chave:
+            set_message("Informe uma chave para realizar a busca.")
+            return
+        if not pages:
+            set_message("Carregue um arquivo antes de buscar.")
+            return
+
+        resultado_indice = buscar_chave_indice(index_buckets, chave)
+        resultado_scan = buscar_por_table_scan(pages, chave)
+        set_search_result(resultado_indice)
+        set_scan_result(resultado_scan)
+        set_comparison(comparar_buscas(resultado_indice, resultado_scan))
+        set_message("Buscas por índice e Table Scan executadas e comparadas.")
+
+    header_style = get_header_style()
+    section_header_style = get_section_header_style()
+    primary_btn_style = get_primary_button_style()
+    secondary_btn_style = get_secondary_button_style()
+
     with VScrollView(style={'padding': 14, 'padding-top': 0, 'align': 'top'}):
-        Label("Carga de dados e paginação", style=HEADER)
+        Label("Carga de dados e paginação", style=header_style)
 
         SelectFile(filepath=filepath, on_file_change=select_file)
 
         with HBoxView():
-            Label("Registros por página:")
+            Label("Registros por página:", style={'color': colors['text'], 'font-size': 13})
             TextInput(
                 text=page_size_text,
                 placeholder_text="Ex.: 100",
                 on_change=set_page_size_text,
             )
 
-        Label(message, word_wrap=True, style={'padding': '14px 0', 'color': 'red' if is_message_error else None})
+        Label(message, word_wrap=True, style={'padding-top': 14, 'padding-bottom': 14, 'color': colors['danger'] if is_message_error else colors['text_muted']})
 
         TotalInfo(total_words=total_words, total_pages=len(pages))
 
         Pages(pages=pages, is_loading=is_loading)
 
-        Label("Pesquisa por chave", style=SECTION_HEADER | { 'padding': '12px 0'})
+        Label("Pesquisa por chave", style=section_header_style | {'padding-top': 12, 'padding-bottom': 6})
         TextInput(
             text=search_key,
             placeholder_text="Digite a chave de busca",
             on_change=lambda value: set_search_key(value),
         )
 
-        # if search_key.strip() and pages:
-        with HBoxView(style={'padding-top': 12}):
-            Button("Buscar por índice", on_click=executar_busca_indice)
-            Button("Table Scan", on_click=executar_table_scan)
+        with HBoxView(style={'padding-top': 10, 'padding-bottom': 12}):
+            Button("Buscar por índice", on_click=executar_busca_indice, style=primary_btn_style | {'margin-right': 6})
+            Button("Table Scan", on_click=executar_table_scan, style=secondary_btn_style | {'margin-right': 6})
+            Button("Executar Ambas e Comparar", on_click=executar_ambas, style=secondary_btn_style)
 
-        if search_result is not None:
-            estado = "encontrada" if search_result["encontrada"] else "não encontrada"
-            Label(f"Busca por índice: {estado}")
-            Label(f"Página: {search_result['pagina'] if search_result['pagina'] is not None else 'N/A'}")
-            Label(f"Custo (páginas lidas): {search_result['custo_paginas_lidas']}")
-            Label(f"Tempo de execução: {search_result['tempo_execucao']:.12f} s")
+        if search_result is not None or scan_result is not None:
+            with HBoxView(style={'padding-top': 6, 'align': 'top'}):
+                SearchResultCard(
+                    title="🔍 Busca por Índice Hash",
+                    result=search_result,
+                    is_index=True,
+                    placeholder_text="Execute a busca por índice para visualizar o resultado.",
+                )
+                SearchResultCard(
+                    title="📋 Table Scan (Busca Sequencial)",
+                    result=scan_result,
+                    is_index=False,
+                    placeholder_text="Execute o Table Scan para visualizar o resultado.",
+                )
 
-        if scan_result is not None:
-            estado = "encontrada" if scan_result["encontrada"] else "não encontrada"
-            Label(f"Table scan: {estado}")
-            Label(f"Página: {scan_result['pagina'] if scan_result['pagina'] is not None else 'N/A'}")
-            Label(f"Custo (páginas lidas): {scan_result['custo_paginas_lidas']}")
-            Label(f"Tempo de execução: {scan_result['tempo_execucao']:.12f} s")
-
-        if comparison:
-            Label(
-                "Comparação entre índice e table scan: "
-                f"tempo índice={comparison['tempo_indice']:.12f}s, "
-                f"tempo scan={comparison['tempo_scan']:.12f}s, "
-                f"ganho={comparison['ganho_tempo_percentual']:.2f}%"
-            )
-            Label(
-                "Custo: "
-                f"índice={comparison['custo_indice']} páginas, "
-                f"scan={comparison['custo_scan']} páginas, "
-                f"diferença={comparison['diferenca_custo']} páginas"
+        if comparison and search_result is not None and scan_result is not None:
+            ComparisonDashboard(
+                search_result=search_result,
+                scan_result=scan_result,
+                comparison=comparison,
             )
 
 
 @component
 def MainWindow(self):
+    use_palette_edifice()
     with Window(title="Simulador de Índice Hash Estático",
                 icon="assets/hashtag.png",
                 _size_open=(800, 600)):
