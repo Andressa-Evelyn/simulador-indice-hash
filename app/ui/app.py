@@ -1,9 +1,11 @@
-from edifice import App, Button, HBoxView, Label, TextInput, VBoxView, Window, component, use_state
-from PySide6.QtWidgets import QFileDialog
-from os.path import basename
+import asyncio
+from edifice import App, Button, HBoxView, Label, TextInput, VBoxView, VScrollView, Window, component, use_state
 
 from app.data import carrega_arquivo, paginacao
 from app.indice import buscar_chave_indice, buscar_por_table_scan, comparar_buscas, construir_indice
+from app.ui.components import SelectFile, TotalInfo, Pages, Loading
+from app.ui.styles import HEADER, SECTION_HEADER
+from app.ui.hooks import use_debouce_state
 
 
 def tamanho_pagina(value: str) -> int:
@@ -19,7 +21,6 @@ def tamanho_pagina(value: str) -> int:
 @component
 def Screen(self):
     filepath, set_filepath = use_state("")
-    page_size_text, set_page_size_text = use_state("10")
     total_words, set_total_words = use_state(0)
     pages, set_pages = use_state([])
     index_buckets, set_index_buckets = use_state([])
@@ -28,25 +29,54 @@ def Screen(self):
     scan_result, set_scan_result = use_state(None)
     comparison, set_comparison = use_state({})
     message, set_message = use_state("Informe o tamanho da página e selecione um arquivo TXT.")
+    is_message_error, set_is_message_error = use_state(False)
+    is_loading, set_is_loading = use_state(False)
 
-    def select_file(event):
-        file_path, _ = QFileDialog.getOpenFileName(
-            None,
-            "Selecionar arquivo",
-            "",
-            "Arquivos de texto (*.txt);;Todos os arquivos (*)",
-        )
-
-        if not file_path:
+    async def update_page_size(value):
+        if not filepath:
             return
 
+        set_is_loading(True)
+        set_is_message_error(False)
+        await asyncio.sleep(0)
+
         try:
+            page_size = tamanho_pagina(value)
+
+            def _calcular():
+                w = carrega_arquivo(filepath)
+                p = paginacao(w, page_size)
+                idx, _ = construir_indice(p, page_size)
+                return w, p, idx
+
+            words, created_pages, indice = await asyncio.to_thread(_calcular)
+            set_total_words(len(words))
+            set_pages(created_pages)
+            set_index_buckets(indice)
+            set_search_result(None)
+            set_scan_result(None)
+            set_comparison({})
+            set_message("Paginação e índice atualizados.")
+        except ValueError as error:
+            set_pages([])
+            set_index_buckets([])
+            set_message(str(error))
+            set_is_message_error(True)
+        finally:
+            set_is_loading(False)
+
+    page_size_text, set_page_size_text = use_debouce_state("10", update_page_size)
+
+    def select_file(file_path: str):
+        try:
+            set_is_message_error(False)
             page_size = tamanho_pagina(page_size_text)
             words = carrega_arquivo(file_path)
             created_pages = paginacao(words, page_size)
             indice, _ = construir_indice(created_pages, page_size)
         except ValueError as error:
             set_message(str(error))
+            set_is_message_error(True)
             return
 
         set_filepath(file_path)
@@ -57,29 +87,6 @@ def Screen(self):
         set_scan_result(None)
         set_comparison({})
         set_message("Dados carregados, páginas criadas e índice construído.")
-
-    def update_page_size(value):
-        set_page_size_text(value)
-        if not filepath:
-            return
-
-        try:
-            words = carrega_arquivo(filepath)
-            created_pages = paginacao(words, tamanho_pagina(value))
-            indice, _ = construir_indice(created_pages, tamanho_pagina(value))
-        except ValueError as error:
-            set_pages([])
-            set_index_buckets([])
-            set_message(str(error))
-            return
-
-        set_total_words(len(words))
-        set_pages(created_pages)
-        set_index_buckets(indice)
-        set_search_result(None)
-        set_scan_result(None)
-        set_comparison({})
-        set_message("Paginação e índice atualizados.")
 
     def executar_busca_indice(event):
         chave = search_key.strip()
@@ -111,40 +118,36 @@ def Screen(self):
             set_comparison(comparar_buscas(search_result, resultado))
         set_message("Table scan executado.")
 
-    def page_preview(page_number, records):
-        preview = ", ".join(records[:5])
-        return f"Página {page_number}: {preview}"
+    with VScrollView(style={'padding': 14, 'padding-top': 0, 'align': 'top'}):
+        Label("Carga de dados e paginação", style=HEADER)
 
-    with VBoxView():
-        Label("Carga de dados e paginação")
-        Label(f"Arquivo: {basename(filepath) if filepath else 'nenhum selecionado'}")
+        SelectFile(filepath=filepath, on_file_change=select_file)
+
         with HBoxView():
             Label("Registros por página:")
             TextInput(
                 text=page_size_text,
                 placeholder_text="Ex.: 100",
-                on_change=update_page_size,
+                on_change=set_page_size_text,
             )
-        Button("Selecione o arquivo", on_click=select_file)
-        Label(message, word_wrap=True)
-        Label(f"Total de palavras: {total_words}")
-        Label(f"Total de páginas: {len(pages)}")
-        if pages:
-            Label(page_preview(1, pages[0]), word_wrap=True)
-            if len(pages) > 1:
-                Label(page_preview(len(pages), pages[-1]), word_wrap=True)
 
-        Label("Pesquisa por chave")
+        Label(message, word_wrap=True, style={'padding': '14px 0', 'color': 'red' if is_message_error else None})
+
+        TotalInfo(total_words=total_words, total_pages=len(pages))
+
+        Pages(pages=pages, is_loading=is_loading)
+
+        Label("Pesquisa por chave", style=SECTION_HEADER | { 'padding': '12px 0'})
         TextInput(
             text=search_key,
             placeholder_text="Digite a chave de busca",
             on_change=lambda value: set_search_key(value),
         )
 
-        if search_key.strip() and pages:
-            with HBoxView():
-                Button("Buscar por índice", on_click=executar_busca_indice)
-                Button("Table Scan", on_click=executar_table_scan)
+        # if search_key.strip() and pages:
+        with HBoxView(style={'padding-top': 12}):
+            Button("Buscar por índice", on_click=executar_busca_indice)
+            Button("Table Scan", on_click=executar_table_scan)
 
         if search_result is not None:
             estado = "encontrada" if search_result["encontrada"] else "não encontrada"
@@ -184,5 +187,5 @@ def MainWindow(self):
 
 
 def create_app():
-    return App(MainWindow()).start()
+    return App(MainWindow())
 

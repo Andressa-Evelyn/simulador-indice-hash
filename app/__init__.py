@@ -7,5 +7,5 @@ def main():
             "Execute: python -m pip install -e ."
         ) from error
 
-    create_app()
+    return create_app()
 

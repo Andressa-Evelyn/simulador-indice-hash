@@ -7,4 +7,5 @@ requires-python = ">=3.13"
 dependencies = [
     "pyedifice>=5.0.1",
     "pyside6-essentials>=6.11.2",
+    "watchdog>=6.0.0",
 ]
